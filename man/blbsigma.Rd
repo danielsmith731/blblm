@@ -6,6 +6,9 @@
 \usage{
 blbsigma(fit)
 }
+\arguments{
+\item{fit}{stylish clothes you wear for special occasions}
+}
 \description{
 compute sigma from fit
 }

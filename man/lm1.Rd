@@ -6,6 +6,13 @@
 \usage{
 lm1(formula, data, freqs)
 }
+\arguments{
+\item{formula}{regression formula}
+
+\item{data}{data, just data, probably a vector}
+
+\item{freqs}{weights of model fit}
+}
 \description{
 estimate the regression estimates based on given the number of repetitions
 }

@@ -1,5 +1,8 @@
 #' @import purrr
 #' @import stats
+#' @import readr
+#' @import parallel
+#' @import tidyverse
 #' @importFrom magrittr %>%
 #' @details
 #' Linear Regression with Little Bag of Bootstraps
@@ -11,6 +14,11 @@
 utils::globalVariables(c("."))
 
 
+#' Linear Regression BLB Original version
+#' @param formula regression formula
+#' @param data a list of files, or a vector
+#' @param m prefered size of data seperation
+#' @param B number of bootstraps
 #' @export
 blblm <- function(formula, data, m = 10, B = 5000) {
   data_list <- split_data(data, m)
@@ -23,20 +31,58 @@ blblm <- function(formula, data, m = 10, B = 5000) {
 }
 
 
+#blblm parallelized for realz homie
+#' Title
+#'
+#' @param formula regression formula
+#' @param data a list of files, or a vector
+#' @param m prefered size of data seperation
+#' @param B number of bootstraps
+#' @param cluster parallel cluster
+#' @return
+#' @export
+blblm_par <-function(formula, data, m = 10, B = 5000, cluster){
+  data_list <- split_data(data, m)
+  estimates <-parLapply(cluster,data_list,
+                        function(formula = formula, data = data, n = nrow(data), B=B){
+                          lm_each_subsample(formula = formula,data=data,n=n,B=B)
+                        })
+  res <- list(estimates = estimates, formula = formula)
+  class(res) <- "blblm"
+  invisible(res)
+}
+
 #' split data into m parts of approximated equal sizes
+#' @param data a list of files, or a vector
+#' @param m prefered size of data seperation
 split_data <- function(data, m) {
-  idx <- sample.int(m, nrow(data), replace = TRUE)
-  data %>% split(idx)
+  if(class(data) == "character"){
+    file.path(folder_directory, list.files(folder_directory, pattern = "csv$")) %>%
+      map(read_csv)
+  }
+  else{
+    idx <- sample.int(m, nrow(data), replace = TRUE)
+    data %>% split(idx)
+  }
 }
 
 
-#' compute the estimates
+#' LR: compute the estimates
+#' @param formula regression formula
+#' @param data data, just data
+#' @param n number of random vectors
+#' @param B number of bootstraps
+#' @export
 lm_each_subsample <- function(formula, data, n, B) {
   replicate(B, lm_each_boot(formula, data, n), simplify = FALSE)
 }
 
 
-#' compute the regression estimates for a blb dataset
+#' compute the linear regression estimates for a blb dataset
+#' @param formula regression formula
+#' @param data data, just data
+#' @param n number of random vectors
+#' @export
 lm_each_boot <- function(formula, data, n) {
   freqs <- rmultinom(1, n, rep(1, nrow(data)))
   lm1(formula, data, freqs)
@@ -44,6 +90,10 @@ lm_each_boot <- function(formula, data, n) {
 
 
 #' estimate the regression estimates based on given the number of repetitions
+#' @param formula regression formula
+#' @param data data, just data, probably a vector
+#' @param freqs weights of model fit
+#' @export
 lm1 <- function(formula, data, freqs) {
   # drop the original closure of formula,
   # otherwise the formula will pick a wront variable from the global scope.
@@ -53,13 +103,17 @@ lm1 <- function(formula, data, freqs) {
 }
 
 
-#' compute the coefficients from fit
+
 blbcoef <- function(fit) {
   coef(fit)
 }
 
+glblbcoef <- function(fit) {
+  coef(fit)
+}
 
 #' compute sigma from fit
+#' @param fit stylish clothes you wear for special occasions
 blbsigma <- function(fit) {
   p <- fit$rank
   y <- model.extract(fit$model, "response")
@@ -68,6 +122,56 @@ blbsigma <- function(fit) {
   sqrt(sum(w * (e^2)) / (sum(w) - p))
 }
 
+#' Generalized Linear Model with BLB
+#' @param formula regression formula
+#' @param data a list of files, or a vector
+#' @param m prefered size of data seperation
+#' @param B number of bootstraps
+#' @param family the glm family
+#' @export
+blbglm <- function(formula, data, m = 10, B = 5000, family) {
+  data_list <- split_data(data, m)
+  estimates <- map(
+    data_list,
+    ~ glm_each_subsample(formula = formula, data = ., n = nrow(.), B = B, family))
+  res <- list(estimates = estimates, formula = formula)
+  class(res) <- "blbglm"
+  invisible(res)
+}
+
+#' same same but different
+#' @param formula regression formula
+#' @param data data, just data
+#' @param n number of random vectors
+#' @param B number of bootstraps
+#' @param family family in glm
+#' @export
+glm_each_subsample <- function(formula, data, n, B, family) {
+  replicate(B, glm_each_boot(formula, data, n, family), simplify = FALSE)
+}
+
+#' same same but different
+#' @param formula regression formula
+#' @param data data, just data
+#' @param n number of random vectors
+#' @param family family in glm
+glm_each_boot <- function(formula, data, n, family) {
+  freqs <- rmultinom(1, n, rep(1, nrow(data)))
+  glm1(formula, data, freqs, family)
+}
+
+#' same but different
+#' @param formula regression formula
+#' @param data data, just data
+#' @param freqs weights
+#' @param family family in glm
+glm1 <- function(formula, data, freqs, family) {
+  # drop the original closure of formula,
+  # otherwise the formula will pick wrong variables from a parent scope.
+  environment(formula) <- environment()
+  fit <- glm(formula, data, family = family, weights = freqs)
+  list(coef = glblbcoef(fit), sigma = sigma(fit))
+}
 
 #' @export
 #' @method print blblm
@@ -77,7 +181,12 @@ print.blblm <- function(x, ...) {
 }
 
 
-#' @export
+#' Regression Model Sigma: BLB
+#' @param object Model
+#' @param confidence True or False
+#' @param level confidence percentage
+#' @param ... extra stuff
+#' @export sigma.blblm
 #' @method sigma blblm
 sigma.blblm <- function(object, confidence = FALSE, level = 0.95, ...) {
   est <- object$estimates
@@ -101,7 +210,12 @@ coef.blblm <- function(object, ...) {
 }
 
 
-#' @export
+#' confidence interval
+#' @param object Model
+#' @param parm TRUE or FALSE
+#' @param level confidence percentage
+#' @param ... extra stuff
+#' @export confint.blblm
 #' @method confint blblm
 confint.blblm <- function(object, parm = NULL, level = 0.95, ...) {
   if (is.null(parm)) {
@@ -118,8 +232,13 @@ confint.blblm <- function(object, parm = NULL, level = 0.95, ...) {
   dimnames(out)[[1]] <- parm
   out
 }
-
-#' @export
+#' predict
+#' @param object Model
+#' @param new_data new studff
+#' @param confidence TRUE or FALSE
+#' @param level confidence percentage
+#' @param ... extra conditions
+#' @export predict.blblm
 #' @method predict blblm
 predict.blblm <- function(object, new_data, confidence = FALSE, level = 0.95, ...) {
   est <- object$estimates

@@ -1,0 +1,84 @@
+---
+title: "BLBLM"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{My-vignette}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+# Bag of Little Bootstrap
+For massive data sets, it is often computationally prohibitive to hold all the sample data in memory and resample from the sample data. The Bag of Little Bootstraps (BLB) provides a method of pre-aggregating data before bootstrapping to reduce computational constraints. This works by partitioning the data set into `B` equal sized buckets and aggregating the data within each bucket. This pre-aggregated data set becomes the new sample data over which to draw samples with replacement. This method is similar to the Block Bootstrap, but the motivations and definitions of the blocks are very different. Under certain assumptions, the sample distribution should approximate the full bootstrapped scenario. 
+
+# LM() Regression Functions
+Regression analysis is primarily used for two conceptually distinct purposes. First, regression analysis is widely used for prediction and forecasting, where its use has substantial overlap with the field of machine learning. Second, in some situations regression analysis can be used to infer causal relationships between the independent and dependent variables. Therefore, the blblm() and blbglm() utilize the lm() and glm() functions as the basic regression function. Simply applying bag of little bootstraps to the already proven functions lm() and glm()
+
+# GLM() Weighted Least Squares
+Weighted least squares (WLS), also known as weighted linear regression,is a generalization of ordinary least squares and linear regression in which the errors covariance matrix is allowed to be different from an identity matrix. WLS is also a specialization of generalized least squares in which the above matrix is diagonal.
+
+# Confidence Interval
+In statistics, a confidence interval (CI) is a type of estimate computed from the statistics of the observed data. This proposes a range of plausible values for an unknown parameter (for example, the mean). For each subbootstrap, coefficient and sigma are calculated. Mean of the coefficients and sigmas will be the output for the formula under the data. Also, the confidence intervals are provided by given confidence level.
+
+#### This package provides the capability for users to utilize the methof of bag of little bootstrap regarding linear regression models and generalized linear models. The package also supports parallization.  
+
+* This package exports two fitting regression model functions from a dataframe or a list of .csv files:
+  - Linear Regression Model: Bag of Little Bootstrap `blblm()`
+  - Generalized Regression Model: Bag of Little Bootstrap `blbglm()`
+  - Linear Regression Model: Parallel Bag of Little Bootstrap `blblm_par()`
+* the functions take the following parameters 
+  - `data`
+  - `formula` is regression formula
+  - `m` is The number of subsamples created
+  - `B` is The number of bootstraps performed
+  - `cluster`: passing the cluster to the bag of little bootstraps
+  - `family`: the distribution family for the glm() model 
+* These are the following 
+  - the mean coefficients for all subsamples `coef()`
+  - the confidence interval of coefficients `confint()`
+  - the mean sigma for all subsamples, also provide confidence interval for sigmas `sigma()`
+  - Predict values for new_data by given model, also provide confidence interval for values `predict()`
+
+```{r}
+library(blblm)
+```
+```{r, warning = FALSE}
+blblm <- function(formula, data, m = 10, B = 5000) {
+  data_list <- split_data(data, m)
+  estimates <- map(
+    data_list,
+    ~ lm_each_subsample(formula = formula, data = ., n = nrow(data), B = B))
+  res <- list(estimates = estimates, formula = formula)
+  class(res) <- "blblm"
+  invisible(res)
+}
+
+blblm_par <-function(formula, data, m = 10, B = 5000, cluster){
+  data_list <- split_data(data, m)
+  estimates <-parLapply(cluster,data_list,
+                        function(formula = formula, data = data, n = nrow(data), B=B){
+                          lm_each_subsample(formula = formula,data=data,n=n,B=B)
+                        })
+  res <- list(estimates = estimates, formula = formula)
+  class(res) <- "blblm"
+  invisible(res)
+}
+
+blbglm <- function(formula, data, m = 10, B = 5000, family) {
+  data_list <- split_data(data, m)
+  estimates <- map(
+    data_list,
+    ~ glm_each_subsample(formula = formula, data = ., n = nrow(.), B = B, family))
+  res <- list(estimates = estimates, formula = formula)
+  class(res) <- "blbglm"
+  invisible(res)
+}
+
+```

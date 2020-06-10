@@ -6,6 +6,11 @@
 \usage{
 split_data(data, m)
 }
+\arguments{
+\item{data}{a list of files, or a vector}
+
+\item{m}{prefered size of data seperation}
+}
 \description{
 split data into m parts of approximated equal sizes
 }
